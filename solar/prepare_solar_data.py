@@ -19,6 +19,13 @@ Output: dataset/Solar/<name>.csv with columns
   date, ghi_lead, cloud_lead, temp_lead, rh_lead, wind_lead, OT
 where OT is hourly PV energy (kWh) and *_lead are weather values shifted
 --horizon hours ahead (stand-in for a weather forecast known at time t).
+
+WARNING: with observed weather (sample/csv/openmeteo archive) the *_lead columns are an
+oracle: the model sees the real future weather, which is not available at prediction time.
+Scores measured this way are optimistic and a model trained this way over-trusts the
+weather input (see solar/experiments/weather_leakage_check.py). For training/evaluation
+the lead columns must be forecasts issued before t, e.g. Open-Meteo Previous Runs API
+(*_previous_day1).
 """
 import argparse
 import json

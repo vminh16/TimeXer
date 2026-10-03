@@ -6,7 +6,14 @@ Sources
   PV (endogenous)    : inverter export CSV (--pv-csv) with columns [time, power_w].
                        Without it, PV is simulated with pvlib from the weather data.
   Weather (exogenous): Open-Meteo archive API (--source openmeteo, needs internet),
-                       or the TMY2 sample bundled with pvlib (--source sample, offline).
+                       a CSV with columns [time, ghi, dni, dhi, cloud, temp, rh, wind]
+                       (--source csv --weather-csv), or the TMY2 sample bundled with
+                       pvlib (--source sample, offline).
+
+Mock data: solar/make_mock_data.py writes solar/mock/{weather_hourly,inverter_5min}.csv;
+run them through this script with
+  python solar/prepare_solar_data.py --source csv --weather-csv solar/mock/weather_hourly.csv \
+      --pv-csv solar/mock/inverter_5min.csv --lat 25.8 --lon -80.27 --tz Etc/GMT+5
 
 Output: dataset/Solar/<name>.csv with columns
   date, ghi_lead, cloud_lead, temp_lead, rh_lead, wind_lead, OT
@@ -53,6 +60,11 @@ def load_weather_openmeteo(lat, lon, start, end, tz):
         'temp': h['temperature_2m'], 'rh': h['relative_humidity_2m'], 'wind': h['wind_speed_10m'],
     }, index=pd.to_datetime(h['time']))
     return df, lat, lon, tz
+
+
+def load_weather_csv(path):
+    df = pd.read_csv(path, parse_dates=['time'], index_col='time')
+    return df[['ghi', 'dni', 'dhi'] + [c for c in WEATHER_COLS if c != 'ghi']]
 
 
 def simulate_pv(weather, lat, lon, tz, kwp, tilt, azimuth):
@@ -123,6 +135,7 @@ def clean_pv(pv, weather, lat, lon, tz, kwp):
     stats['outliers_removed'] = int(bad.sum())
     stats['frozen_removed'] = int(frozen.sum())
     p = p.mask(bad | frozen)
+    kept = p.copy()
 
     # 5-min W -> hourly kWh (need >= 50% coverage inside the hour)
     full = pd.date_range(weather.index[0], weather.index[-1] + pd.Timedelta('55min'), freq='5min')
@@ -144,9 +157,12 @@ def clean_pv(pv, weather, lat, lon, tz, kwp):
     ok = e_short.notna() & (weather['ghi'] > 0)
     k = np.linalg.lstsq(weather.loc[ok, ['ghi']].values, e_short[ok].values, rcond=None)[0][0]
     long_gap = e_short.isna()
+    observed = e_short.copy()
     e_short[long_gap] = (k * weather.loc[long_gap, 'ghi']).clip(lower=0, upper=kwp)
     stats['filled_model'] = int(long_gap.sum())
-    return e_short.rename('OT'), stats
+    # intermediates, for plotting each step
+    steps = {'kept_5min_w': kept, 'hourly_observed_kwh': observed}
+    return e_short.rename('OT'), stats, steps
 
 
 # ------------------------------------------------------- 3. align + export
@@ -159,7 +175,8 @@ def build_dataset(energy, weather, horizon):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--source', choices=['sample', 'openmeteo'], default='sample')
+    ap.add_argument('--source', choices=['sample', 'openmeteo', 'csv'], default='sample')
+    ap.add_argument('--weather-csv', default=None, help='weather CSV for --source csv')
     ap.add_argument('--lat', type=float, default=10.82)   # Ho Chi Minh City
     ap.add_argument('--lon', type=float, default=106.63)
     ap.add_argument('--tz', default='Asia/Ho_Chi_Minh')
@@ -172,11 +189,12 @@ def main():
     ap.add_argument('--horizon', type=int, default=24)
     ap.add_argument('--demo-faults', action='store_true', help='inject logger defects (demo only)')
     ap.add_argument('--out', default='./dataset/Solar/solar_demo.csv')
-    ap.add_argument('--stats', default=None, help='optional JSON with pipeline stats + plot data')
     args = ap.parse_args()
 
     if args.source == 'sample':
         weather, lat, lon, tz = load_weather_sample()
+    elif args.source == 'csv':
+        weather, lat, lon, tz = load_weather_csv(args.weather_csv), args.lat, args.lon, args.tz
     else:
         weather, lat, lon, tz = load_weather_openmeteo(args.lat, args.lon, args.start, args.end, args.tz)
 
@@ -187,27 +205,12 @@ def main():
         pv = simulate_pv(weather, lat, lon, tz, args.kwp, args.tilt, args.azimuth)
         pv, log = inject_faults(pv, args.kwp) if args.demo_faults else (pv, {})
 
-    energy, stats = clean_pv(pv, weather, lat, lon, tz, args.kwp)
+    energy, stats, _ = clean_pv(pv, weather, lat, lon, tz, args.kwp)
     df = build_dataset(energy, weather, args.horizon)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     df.to_csv(args.out, index=False, float_format='%.4f')
     print(f'saved {args.out}: {df.shape}')
     print(json.dumps({**log, **stats}, indent=1))
-
-    if args.stats:
-        raw_h = pv[~pv.index.duplicated()].sort_index()['power_w'].resample('h').mean() / 1000
-        out = {'faults': log, 'stats': stats, 'n_rows': len(df), 'columns': df.columns.tolist(),
-               'head': df.iloc[8:13].astype(str).values.tolist(),
-               'hourly_raw': raw_h.reindex(weather.index).round(3).tolist(),
-               'hourly_clean': energy.round(3).tolist(),
-               'ghi': weather['ghi'].tolist(), 'cloud': weather['cloud'].tolist(),
-               'temp': weather['temp'].tolist(),
-               'index': weather.index.strftime('%Y-%m-%d %H:%M').tolist(),
-               'corr': df.drop(columns='date').corr()['OT'].round(2).to_dict(),
-               'daily_kwh': energy.resample('D').sum().round(2).tolist(),
-               'monthly_kwh': energy.resample('MS').sum().round(1).tolist()}
-        with open(args.stats, 'w') as f:
-            json.dump(out, f)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,7 @@
+{
+  "name": "solar-pipeline-deck",
+  "private": true,
+  "description": "Builds solar_data_pipeline.pptx from fig_data.json",
+  "scripts": { "build": "node build_deck.js" },
+  "dependencies": { "jszip": "^3.10.1", "pptxgenjs": "^3.12.0" }
+}

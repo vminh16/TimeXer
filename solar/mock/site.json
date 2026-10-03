@@ -1,0 +1,14 @@
+{
+ "lat": 25.8,
+ "lon": -80.26666666666667,
+ "tz": "Etc/GMT+5",
+ "kwp": 5.0,
+ "tilt": 10,
+ "azimuth": 180,
+ "injected_faults": {
+  "missing": 2332,
+  "spikes": 30,
+  "frozen": 72,
+  "duplicates": 200
+ }
+}

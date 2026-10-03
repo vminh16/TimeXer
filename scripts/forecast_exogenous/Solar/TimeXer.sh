@@ -4,7 +4,9 @@ model_name=TimeXer
 des='Timexer-MS'
 
 # Build the dataset first:
-#   python solar/prepare_solar_data.py --demo-faults              (offline sample)
+#   python solar/make_mock_data.py                                 (mock raw data -> solar/mock/)
+#   python solar/prepare_solar_data.py --source csv --weather-csv solar/mock/weather_hourly.csv \
+#       --pv-csv solar/mock/inverter_5min.csv --lat 25.8 --lon -80.27 --tz Etc/GMT+5
 #   python solar/prepare_solar_data.py --source openmeteo --pv-csv inverter.csv --out ./dataset/Solar/solar.csv
 
 python3 -u run.py \

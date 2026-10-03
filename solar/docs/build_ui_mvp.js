@@ -1,6 +1,7 @@
-// One-slide wireframe of the MVP web dashboard, built from native shapes and charts.
+// One-slide UI design for the MVP: three phone screens built from native shapes and charts.
 //   cd solar/docs && npm install && node build_ui_mvp.js   -> ui_mvp.pptx
-// Numbers come from the mock dataset (dataset/Solar/solar_demo.csv, solar/mock/weather_hourly.csv).
+// Patterns follow existing monitoring / forecast apps (see the comparison on the slide);
+// numbers come from the mock dataset (dataset/Solar/solar_demo.csv, solar/mock/weather_hourly.csv).
 const fs = require("fs");
 const path = require("path");
 const pptxgen = require("pptxgenjs");
@@ -8,11 +9,9 @@ const JSZip = require("jszip");
 
 const ROOT = path.join(__dirname, "..", "..");
 const OUT = path.join(__dirname, process.argv[2] || "ui_mvp.pptx");
-const COL = {
-  ink: "1B2433", ink2: "2D3748", slate: "4A5568", muted: "718096", grid: "E2E8F0", line: "CBD5E0", bg: "F8FAFC", white: "FFFFFF",
-  sun: "E89B0C", sunBg: "FDF3DC", sea: "2A9D8F", seaBg: "E6F4F2", seaLight: "9FD3CC", coral: "E76F51", coralBg: "FCE9E4", ok: "38A169",
-};
-const FONT = "Calibri";
+// one accent (solar amber) + greys, as in inverter monitoring apps
+const C = { text: "111827", sub: "6B7280", hair: "E5E7EB", fill: "F3F4F6", frame: "1F2937", white: "FFFFFF", accent: "F59E0B", accentDark: "B45309", fc: "9CA3AF" };
+const FONT = "Arial";
 
 // ------------------------------------------------------------- mock data
 function readCsv(file) {
@@ -22,205 +21,202 @@ function readCsv(file) {
 }
 const ds = readCsv(path.join(ROOT, "dataset/Solar/solar_demo.csv"));
 const wx = readCsv(path.join(ROOT, "solar/mock/weather_hourly.csv"));
-const day = (rows, key, d) => rows.filter((r) => r[key].startsWith(d));
-const DAYS = ["2023-03-15", "2023-03-16", "2023-03-17", "2023-03-18", "2023-03-19", "2023-03-20"];
-const NOW_DAY = 2, NOW_H = 13; // "now" = 17/03 13:00
-const pv = DAYS.flatMap((d) => day(ds, "date", d).map((r) => r.OT));
-const nowIdx = NOW_DAY * 24 + NOW_H;
-const actual = pv.map((v, i) => (i <= nowIdx ? v : null));
-const p50 = pv.map((v, i) => (i >= nowIdx ? v : null));                 // mock forecast = future mock values
-const p10 = p50.map((v) => (v == null ? null : +(v * 0.72).toFixed(3)));
-const p90 = p50.map((v) => (v == null ? null : +Math.min(v * 1.18, 4.6).toFixed(3)));
+const hourly = (d) => ds.filter((r) => r.date.startsWith(d)).map((r) => r.OT);
 const sum = (a) => a.reduce((s, v) => s + (v || 0), 0);
-const todayRows = pv.slice(48, 72), tomorrow = pv.slice(72, 96);
-const doneToday = sum(todayRows.slice(0, NOW_H + 1)), fcToday = sum(todayRows), fcTomorrow = sum(tomorrow);
-const LAST7 = ["2023-03-11", "2023-03-12", "2023-03-13", "2023-03-14", "2023-03-15", "2023-03-16", "2023-03-17"];
-const avg7 = sum(LAST7.map((d) => sum(day(ds, "date", d).map((r) => r.OT)))) / 7;
-const cloudTomorrow = day(wx, "time", "2023-03-18").map((r) => r.cloud);
-const nowWx = wx.find((r) => r.time.startsWith("2023-03-17 13:00"));
 const vn = (x, d = 1) => x.toFixed(d).replace(".", ",");
+const NOW_H = 13;
+const today = hourly("2023-03-17"), tomorrow = hourly("2023-03-18");
+const doneToday = sum(today.slice(0, NOW_H + 1)), restToday = sum(today.slice(NOW_H + 1));
+const week = ["17", "18", "19", "20", "21", "22", "23"].map((d, i) => {
+  const date = `2023-03-${d}`, rows = wx.filter((r) => r.time.startsWith(date) && r.ghi > 0);
+  return { label: ["Hôm nay", "T7", "CN", "T2", "T3", "T4", "T5"][i], date: `${d}/03`, kwh: sum(hourly(date)), cloud: Math.round(sum(rows.map((r) => r.cloud)) / rows.length) };
+});
 
 // ------------------------------------------------------------- deck
 const pres = new pptxgen();
 pres.layout = "LAYOUT_16x9"; // 10 x 5.625 in
 pres.theme = { headFontFace: FONT, bodyFontFace: FONT };
-pres.title = "Thiết kế UI – MVP dự báo điện mặt trời";
+pres.title = "UI MVP – dự báo điện mặt trời";
 const s = pres.addSlide();
-s.background = { color: COL.white };
+s.background = { color: C.white };
+let uid = 0;
+const T = (t, o) => s.addText(t, Object.assign({ isTextBox: true, margin: 0, fontFace: FONT, fontSize: 8, color: C.text, valign: "middle", objectName: `t${uid++}` }, o));
+const R = (x, y, w, h, fill, o = {}) => s.addShape(pres.shapes.RECTANGLE, Object.assign({ x, y, w, h, fill: { color: fill }, line: { type: "none" }, objectName: `r${uid++}` }, o));
+const RR = (x, y, w, h, r, fill, o = {}) => s.addShape(pres.shapes.ROUNDED_RECTANGLE, Object.assign({ x, y, w, h, rectRadius: r, fill: { color: fill }, line: { type: "none" }, objectName: `rr${uid++}` }, o));
+const hair = (x, y, w) => s.addShape(pres.shapes.LINE, { x, y, w, h: 0, line: { color: C.hair, width: 0.75 }, objectName: `hair${uid++}` });
 
-const txt = (t, o) => s.addText(t, Object.assign({ isTextBox: true, margin: 0, fontFace: FONT, fontSize: 10, color: COL.ink, valign: "top" }, o));
-const rect = (x, y, w, h, fill, name, o = {}) => s.addShape(pres.shapes.RECTANGLE, Object.assign({ x, y, w, h, fill: { color: fill }, line: { type: "none" }, objectName: name }, o));
-const card = (x, y, w, h, name, o = {}) => s.addShape(pres.shapes.ROUNDED_RECTANGLE, Object.assign({ x, y, w, h, rectRadius: 0.06, fill: { color: COL.white }, line: { color: COL.grid, width: 0.75 }, objectName: name }, o));
-const badge = (n, x, y, name) => {
-  s.addShape(pres.shapes.OVAL, { x, y, w: 0.2, h: 0.2, fill: { color: COL.coral }, line: { color: COL.white, width: 1 }, objectName: `Ref badge ${n} ${name}` });
-  txt(String(n), { x, y, w: 0.2, h: 0.2, fontSize: 9, bold: true, color: COL.white, align: "center", valign: "middle", objectName: `Ref badge ${n} num ${name}` });
+// phone shell with status bar and bottom tab bar
+const PW = 1.95, PH = 4.12, PY = 0.82;
+function phone(x, name, activeTab) {
+  RR(x, PY, PW, PH, 0.22, C.white, { line: { color: C.frame, width: 2 }, objectName: `${name} frame` });
+  RR(x + PW / 2 - 0.3, PY + 0.06, 0.6, 0.1, 0.05, C.frame, { objectName: `${name} notch` });
+  T("13:05", { x: x + 0.18, y: PY + 0.05, w: 0.4, h: 0.12, fontSize: 7, bold: true });
+  RR(x + PW - 0.36, PY + 0.08, 0.18, 0.08, 0.02, C.white, { line: { color: C.text, width: 0.75 } });
+  if (activeTab != null) {
+    hair(x + 0.05, PY + PH - 0.4, PW - 0.1);
+    ["Tổng quan", "Dự báo", "Thiết bị", "Tôi"].forEach((t, i) => {
+      const cx = x + 0.1 + i * ((PW - 0.2) / 4);
+      s.addShape(pres.shapes.OVAL, { x: cx + (PW - 0.2) / 8 - 0.05, y: PY + PH - 0.34, w: 0.1, h: 0.1, fill: { color: i === activeTab ? C.accent : C.fc }, line: { type: "none" }, objectName: `${name} tab icon ${i}` });
+      T(t, { x: cx, y: PY + PH - 0.22, w: (PW - 0.2) / 4, h: 0.12, fontSize: 6, align: "center", color: i === activeTab ? C.accentDark : C.sub, bold: i === activeTab });
+    });
+  }
+}
+const caption = (x, title, lines) => {
+  T(title, { x, y: 0.5, w: PW, h: 0.22, fontSize: 11, bold: true, valign: "bottom" });
+  T(lines, { x, y: PY + PH + 0.08, w: PW + 0.2, h: 0.55, fontSize: 7.5, color: C.sub, valign: "top" });
 };
-const legendItem = (x, y, label, color, dash, name) => {
-  s.addShape(pres.shapes.LINE, { x, y: y + 0.08, w: 0.2, h: 0, line: { color, width: 2, dashType: dash || "solid" }, objectName: `${name} line` });
-  txt(label, { x: x + 0.24, y, w: 0.06 * label.length + 0.1, h: 0.16, fontSize: 8, color: COL.slate, valign: "middle", objectName: `${name} text` });
-};
 
-// title
-txt("Thiết kế UI – MVP dự báo điện mặt trời", { x: 0.3, y: 0.15, w: 7, h: 0.35, fontSize: 20, bold: true, objectName: "Slide title" });
-txt("Wireframe dashboard web. Mỗi khối dựng lại từ một mẫu tham khảo (số đỏ ↔ cột bên phải). Số liệu: dữ liệu mock.", { x: 0.3, y: 0.48, w: 7.0, h: 0.2, fontSize: 9, color: COL.muted, objectName: "Slide subtitle" });
+T("UI MVP – dự báo điện mặt trời cho chủ nhà", { x: 0.35, y: 0.12, w: 7, h: 0.3, fontSize: 16, bold: true });
 
-// ---------------- browser frame
-const FX = 0.3, FY = 0.75, FW = 6.95, FH = 4.7;
-s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: FX, y: FY, w: FW, h: FH, rectRadius: 0.08, fill: { color: COL.bg }, line: { color: COL.line, width: 1 }, objectName: "Browser frame" });
-rect(FX + 0.02, FY + 0.02, FW - 0.04, 0.2, COL.grid, "Browser bar");
-["E76F51", "E9C46A", "38A169"].forEach((c, i) => s.addShape(pres.shapes.OVAL, { x: FX + 0.1 + i * 0.13, y: FY + 0.07, w: 0.09, h: 0.09, fill: { color: c }, line: { type: "none" }, objectName: `Browser dot ${i}` }));
-txt("app.solarcast.vn/tong-quan", { x: FX + 0.6, y: FY + 0.04, w: 3, h: 0.16, fontSize: 8, color: COL.muted, valign: "middle", objectName: "Browser url" });
+// =============================================================== screen 1: home
+{
+  const x = 0.35, ix = x + 0.14, iw = PW - 0.28;
+  phone(x, "Home", 0);
+  T([{ text: "Nhà Q.7  ", options: { bold: true, fontSize: 10 } }, { text: "▾", options: { fontSize: 7, color: C.sub } }], { x: ix, y: PY + 0.26, w: 1.2, h: 0.2 });
+  s.addShape(pres.shapes.OVAL, { x: x + PW - 0.32, y: PY + 0.28, w: 0.14, h: 0.14, fill: { color: C.white }, line: { color: C.text, width: 1 }, objectName: "Home bell" });
+  s.addShape(pres.shapes.OVAL, { x: x + PW - 0.22, y: PY + 0.26, w: 0.06, h: 0.06, fill: { color: "DC2626" }, line: { type: "none" }, objectName: "Home bell dot" });
+  T("Sản lượng hôm nay", { x: ix, y: PY + 0.58, w: iw, h: 0.13, fontSize: 7, color: C.sub });
+  T([{ text: vn(doneToday), options: { fontSize: 24, bold: true } }, { text: " kWh", options: { fontSize: 10, color: C.sub } }], { x: ix, y: PY + 0.72, w: iw, h: 0.38, valign: "bottom" });
+  T(`Đang phát ${vn(today[NOW_H])} kW`, { x: ix, y: PY + 1.13, w: iw, h: 0.13, fontSize: 7, color: C.sub });
+  // segmented control
+  RR(ix, PY + 1.36, iw, 0.2, 0.05, C.fill);
+  ["Ngày", "Tuần", "Tháng", "Năm"].forEach((t, i) => {
+    const sw = iw / 4, sx = ix + i * sw;
+    if (i === 0) RR(sx + 0.02, PY + 1.38, sw - 0.04, 0.16, 0.04, C.white, { line: { color: C.hair, width: 0.5 } });
+    T(t, { x: sx, y: PY + 1.36, w: sw, h: 0.2, fontSize: 6.5, align: "center", bold: i === 0, color: i === 0 ? C.text : C.sub });
+  });
+  T([{ text: "‹", options: { color: C.sub } }, { text: "        Hôm nay, 17/03        " }, { text: "›", options: { color: C.sub } }], { x: ix, y: PY + 1.62, w: iw, h: 0.16, fontSize: 7.5, align: "center", bold: true });
+  // bars = measured, line = forecast (Home Assistant energy dashboard pattern)
+  const hrs = Array.from({ length: 24 }, (_, h) => (h % 6 === 0 ? `${h}h` : ""));
+  s.addChart([
+    { type: pres.charts.BAR, data: [{ name: "Thực tế", labels: hrs, values: today.map((v, h) => (h <= NOW_H ? v : null)) }], options: { chartColors: [C.accent], barGapWidthPct: 25 } },
+    { type: pres.charts.LINE, data: [{ name: "Dự báo", labels: hrs, values: today }], options: { chartColors: [C.fc], lineSize: 1.25, lineDataSymbol: "none" } },
+  ], {
+    x: ix - 0.04, y: PY + 1.8, w: iw + 0.06, h: 1.2, objectName: "Home chart", showLegend: false, showTitle: false,
+    valAxisMinVal: 0, valAxisMaxVal: 4, valAxisMajorUnit: 2, valAxisLabelFormatCode: "0", catAxisLabelFrequency: 1,
+    catAxisLabelFontSize: 6, valAxisLabelFontSize: 6, catAxisLabelColor: C.sub, valAxisLabelColor: C.sub, catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
+    valGridLine: { color: C.hair, size: 0.5 }, catGridLine: { style: "none" }, valAxisLineShow: false, catAxisLineColor: C.hair,
+  });
+  R(ix, PY + 3.03, 0.1, 0.06, C.accent); T("Đã phát", { x: ix + 0.13, y: PY + 2.99, w: 0.5, h: 0.14, fontSize: 6, color: C.sub });
+  s.addShape(pres.shapes.LINE, { x: ix + 0.62, y: PY + 3.06, w: 0.14, h: 0, line: { color: C.fc, width: 1.25, dashType: "dash" }, objectName: "Home legend fc" });
+  T("Dự báo", { x: ix + 0.8, y: PY + 2.99, w: 0.5, h: 0.14, fontSize: 6, color: C.sub });
+  // list rows
+  hair(ix, PY + 3.2, iw);
+  T("Còn lại hôm nay (dự báo)", { x: ix, y: PY + 3.22, w: 1.2, h: 0.2, fontSize: 7 });
+  T(`+${vn(restToday)} kWh`, { x: ix + 1.0, y: PY + 3.22, w: iw - 1.0, h: 0.2, fontSize: 7, bold: true, align: "right" });
+  hair(ix, PY + 3.44, iw);
+  T([{ text: "Ngày mai", options: { breakLine: true } }, { text: "nhiều mây", options: { fontSize: 6, color: C.sub } }], { x: ix, y: PY + 3.45, w: 1.0, h: 0.26, fontSize: 7 });
+  T(`${vn(sum(tomorrow))} kWh  ›`, { x: ix + 0.9, y: PY + 3.45, w: iw - 0.9, h: 0.26, fontSize: 7, bold: true, align: "right" });
+  caption(x, "1  Tổng quan", "Số lớn trên cùng (FusionSolar, Solarman). Cột = đã đo, đường = dự báo trên cùng một biểu đồ (Home Assistant Energy).");
+}
 
-// ---------------- sidebar  (ref 1)
-const SX = FX + 0.02, SY = FY + 0.22, SW = 1.15, SH = FH - 0.24;
-rect(SX, SY, SW, SH, COL.ink, "Sidebar");
-txt([{ text: "Solar", options: { color: COL.white } }, { text: "Cast", options: { color: COL.sun } }], { x: SX + 0.15, y: SY + 0.12, w: 1, h: 0.25, fontSize: 13, bold: true, objectName: "Logo" });
-["Tổng quan", "Dự báo", "Lịch sử", "Cảnh báo", "Hệ thống"].forEach((n, i) => {
-  const y = SY + 0.5 + i * 0.32;
-  if (i === 0) s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: SX + 0.08, y: y - 0.04, w: SW - 0.16, h: 0.26, rectRadius: 0.05, fill: { color: COL.sun }, line: { type: "none" }, objectName: "Nav active" });
-  txt(n, { x: SX + 0.18, y, w: SW - 0.3, h: 0.18, fontSize: 10, bold: i === 0, color: i === 0 ? COL.ink : "CBD5E0", valign: "middle", objectName: `Nav ${n}` });
-});
-s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: SX + 0.08, y: SY + SH - 1.0, w: SW - 0.16, h: 0.9, rectRadius: 0.05, fill: { color: COL.ink2 }, line: { type: "none" }, objectName: "System card" });
-txt([
-  { text: "Hệ thống của bạn", options: { bold: true, color: COL.white, breakLine: true } },
-  { text: "5 kWp · 10° · Nam", options: { color: "CBD5E0", breakLine: true } },
-  { text: "TP.HCM", options: { color: "CBD5E0", breakLine: true } },
-  { text: "Kết nối inverter ›", options: { color: COL.sun, bold: true } },
-], { x: SX + 0.15, y: SY + SH - 0.93, w: SW - 0.25, h: 0.8, fontSize: 8, paraSpaceAfter: 2, objectName: "System card text" });
-badge(1, SX + SW - 0.14, SY + 0.08, "sidebar");
-badge(6, SX + SW - 0.14, SY + SH - 1.06, "system");
+// =============================================================== screen 2: 7-day forecast
+{
+  const x = 2.75, ix = x + 0.14, iw = PW - 0.28;
+  phone(x, "Forecast", 1);
+  T("Dự báo", { x: ix, y: PY + 0.26, w: iw, h: 0.22, fontSize: 12, bold: true });
+  T("7 ngày tới · Nhà Q.7 · 5 kWp", { x: ix, y: PY + 0.48, w: iw, h: 0.13, fontSize: 6.5, color: C.sub });
+  const max = Math.max(...week.map((d) => d.kwh)), RH = 0.27, y0 = PY + 0.7;
+  week.forEach((d, i) => {
+    const y = y0 + i * RH;
+    hair(ix, y, iw);
+    T([{ text: d.label, options: { bold: i === 0, breakLine: true } }, { text: d.date, options: { fontSize: 5.5, color: C.sub } }], { x: ix, y: y + 0.02, w: 0.45, h: RH - 0.04, fontSize: 7 });
+    T(`mây ${d.cloud}%`, { x: ix + 0.45, y, w: 0.42, h: RH, fontSize: 6, color: C.sub });
+    // range-bar style row (weather-app daily list)
+    const bx = ix + 0.88, bw = 0.5;
+    RR(bx, y + RH / 2 - 0.025, bw, 0.05, 0.025, C.fill);
+    RR(bx, y + RH / 2 - 0.025, Math.max(0.05, bw * d.kwh / max), 0.05, 0.025, C.accent);
+    T(vn(d.kwh), { x: ix + 1.4, y, w: iw - 1.4, h: RH, fontSize: 7.5, bold: true, align: "right" });
+  });
+  hair(ix, y0 + 7 * RH, iw);
+  T("Ngày mai theo giờ (kWh)", { x: ix, y: y0 + 7 * RH + 0.06, w: iw, h: 0.14, fontSize: 7, bold: true });
+  const hrs = Array.from({ length: 15 }, (_, i) => ((i + 5) % 3 === 0 ? `${i + 5}h` : ""));
+  s.addChart(pres.charts.BAR, [{ name: "kWh", labels: hrs, values: tomorrow.slice(5, 20) }], {
+    x: ix - 0.04, y: y0 + 7 * RH + 0.2, w: iw + 0.06, h: 0.7, objectName: "Forecast tomorrow chart", chartColors: [C.fc], barGapWidthPct: 25,
+    showLegend: false, showTitle: false, valAxisMinVal: 0, valAxisMaxVal: 4, valAxisMajorUnit: 2, valAxisLabelFormatCode: "0", catAxisLabelFrequency: 1,
+    catAxisLabelFontSize: 6, valAxisLabelFontSize: 6, catAxisLabelColor: C.sub, valAxisLabelColor: C.sub, catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
+    valGridLine: { color: C.hair, size: 0.5 }, catGridLine: { style: "none" }, valAxisLineShow: false, catAxisLineColor: C.hair,
+  });
+  T("Theo dự báo thời tiết, cập nhật mỗi giờ", { x: ix, y: PY + PH - 0.58, w: iw, h: 0.13, fontSize: 5.5, color: C.sub });
+  caption(x, "2  Dự báo", "Danh sách theo ngày như app thời tiết (PV Solar Forecast, Forecast.Solar). Chạm một ngày để xem theo giờ.");
+}
 
-// ---------------- main area
-const MX = SX + SW + 0.12, MW = FX + FW - 0.12 - MX;
-// header (ref 2)
-txt([{ text: "Nhà mẫu · 5 kWp", options: { bold: true, fontSize: 13, breakLine: true } }, { text: "Thứ Sáu 17/03 · 13:00 · cập nhật 5 phút trước", options: { fontSize: 8, color: COL.muted } }],
-  { x: MX, y: SY + 0.08, w: 2.6, h: 0.4, objectName: "Header site" });
-const pill = (x, w, fill, color, t, name) => {
-  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y: SY + 0.12, w, h: 0.26, rectRadius: 0.13, fill: { color: fill }, line: { type: "none" }, objectName: `${name} pill` });
-  txt(t, { x, y: SY + 0.12, w, h: 0.26, fontSize: 9, bold: true, color, align: "center", valign: "middle", objectName: `${name} text` });
-};
-pill(MX + MW - 2.55, 1.25, "E6F6EC", COL.ok, `Đang phát ${vn(actual[nowIdx])} kW`, "Status");
-pill(MX + MW - 1.2, 1.2, COL.seaBg, COL.sea, `${vn(nowWx.temp, 0)}°C · mây ${nowWx.cloud}%`, "Weather");
-badge(2, MX + MW - 2.65, SY + 0.04, "header");
+// =============================================================== screen 3: add system
+{
+  const x = 5.15, ix = x + 0.14, iw = PW - 0.28;
+  phone(x, "Setup", null);
+  T([{ text: "‹ ", options: { color: C.accentDark } }, { text: "Thêm hệ thống", options: { bold: true } }], { x: ix, y: PY + 0.26, w: iw, h: 0.2, fontSize: 9 });
+  T("Bước 2/3", { x: ix, y: PY + 0.26, w: iw, h: 0.2, fontSize: 6.5, color: C.sub, align: "right" });
+  const section = (y, t) => T(t, { x: ix, y, w: iw, h: 0.13, fontSize: 5.5, color: C.sub, bold: true, charSpacing: 1 });
+  const row = (y, k, v, h = 0.22) => { hair(ix, y, iw); T(k, { x: ix, y, w: 1, h, fontSize: 7 }); T(v, { x: ix + 0.7, y, w: iw - 0.7, h, fontSize: 7, color: C.sub, align: "right" }); };
+  section(PY + 0.56, "VỊ TRÍ");
+  R(ix, PY + 0.7, iw, 0.5, C.fill, { objectName: "Map placeholder" });
+  s.addShape(pres.shapes.OVAL, { x: ix + iw / 2 - 0.04, y: PY + 0.9, w: 0.08, h: 0.08, fill: { color: C.accent }, line: { color: C.white, width: 1 }, objectName: "Map pin" });
+  row(PY + 1.2, "Địa chỉ", "Quận 7, TP.HCM ›");
+  section(PY + 1.5, "TẤM PIN");
+  row(PY + 1.64, "Công suất", "5,0 kWp");
+  row(PY + 1.86, "Góc nghiêng", "10°");
+  row(PY + 2.08, "Hướng", "Nam (180°) ›");
+  hair(ix, PY + 2.3, iw);
+  section(PY + 2.4, "LẤY SẢN LƯỢNG TỪ");
+  ["Solarman", "FusionSolar", "Tải file CSV"].forEach((t, i) => {
+    const y = PY + 2.54 + i * 0.22;
+    hair(ix, y, iw);
+    T(t, { x: ix, y, w: 1.2, h: 0.22, fontSize: 7 });
+    s.addShape(pres.shapes.OVAL, { x: ix + iw - 0.13, y: y + 0.055, w: 0.11, h: 0.11, fill: { color: i === 0 ? C.accent : C.white }, line: { color: i === 0 ? C.accent : C.fc, width: 1 }, objectName: `Setup radio ${i}` });
+  });
+  hair(ix, PY + 3.2, iw);
+  RR(ix, PY + PH - 0.5, iw, 0.26, 0.06, C.accent, { objectName: "Setup button" });
+  T("Tiếp tục", { x: ix, y: PY + PH - 0.5, w: iw, h: 0.26, fontSize: 8, bold: true, color: C.white, align: "center" });
+  caption(x, "3  Thêm hệ thống", "Khai báo vị trí, kWp, góc, hướng như Solcast. Lấy số đo từ tài khoản inverter có sẵn hoặc file CSV.");
+}
 
-// KPI cards (ref 3)
-const KY = SY + 0.55, KH = 0.66, KG = 0.1, KW = (MW - 3 * KG) / 4;
-const kpis = [
-  ["Đã phát hôm nay", `${vn(doneToday)} kWh`, "tính đến 13:00", COL.ink],
-  ["Dự báo cả ngày", `${vn(fcToday)} kWh`, `P10–P90: ${vn(fcToday * 0.8, 0)}–${vn(fcToday * 1.08, 0)} kWh`, COL.sea],
-  ["Ngày mai 18/03", `${vn(fcTomorrow)} kWh`, `${vn((fcTomorrow / avg7 - 1) * 100, 0)}% so với TB 7 ngày`, COL.coral],
-  ["Sai số 7 ngày (MAE)", "0,21 kWh", "trung bình mỗi giờ", COL.ink],
-];
-kpis.forEach(([l, v, sub, c], i) => {
-  const x = MX + i * (KW + KG);
-  card(x, KY, KW, KH, `KPI ${i} card`);
-  txt(l, { x: x + 0.1, y: KY + 0.07, w: KW - 0.15, h: 0.16, fontSize: 8, color: COL.muted, objectName: `KPI ${i} label` });
-  txt(v, { x: x + 0.1, y: KY + 0.23, w: KW - 0.15, h: 0.24, fontSize: 15, bold: true, color: c, objectName: `KPI ${i} value` });
-  txt(sub, { x: x + 0.1, y: KY + 0.48, w: KW - 0.12, h: 0.14, fontSize: 7.5, color: i === 2 ? COL.coral : COL.muted, objectName: `KPI ${i} sub` });
-});
-badge(3, MX - 0.08, KY - 0.08, "kpi");
-
-// main chart: history vs forecast with "now" line and P10-P90 (ref 4)
-const CY = KY + KH + 0.1, CHh = 1.72;
-card(MX, CY, MW, CHh, "Chart card");
-txt("Sản lượng theo giờ: 3 ngày qua & 3 ngày tới", { x: MX + 0.12, y: CY + 0.08, w: 3, h: 0.18, fontSize: 10, bold: true, objectName: "Chart title" });
-legendItem(MX + MW - 2.75, CY + 0.08, "Thực tế", COL.sun, null, "Legend actual");
-legendItem(MX + MW - 1.95, CY + 0.08, "Dự báo P50", COL.sea, "dash", "Legend p50");
-legendItem(MX + MW - 0.98, CY + 0.08, "P10–P90", COL.seaLight, null, "Legend band");
-const PL = { x: 0.07, y: 0.06, w: 0.91, h: 0.76 };
-const cf = { x: MX + 0.05, y: CY + 0.3, w: MW - 0.1, h: CHh - 0.38 };
-const xs = pv.map((_, i) => +(i / 24).toFixed(4));
-s.addChart(pres.charts.SCATTER, [{ name: "x", values: xs }, { name: "P90", values: p90 }, { name: "P10", values: p10 }, { name: "Thực tế", values: actual }, { name: "P50", values: p50 }], Object.assign({}, cf, {
-  objectName: "Forecast chart", chartColors: [COL.seaLight, COL.seaLight, COL.sun, COL.sea], lineSize: 1.25, lineDataSymbol: "none",
-  showLegend: false, showTitle: false, layout: PL, displayBlanksAs: "gap",
-  catAxisMinVal: 0, catAxisMaxVal: 6, catAxisMajorUnit: 1, catAxisHidden: true,
-  valAxisMinVal: 0, valAxisMaxVal: 5, valAxisMajorUnit: 1, valAxisLabelFormatCode: "0", valAxisLabelFontSize: 8, valAxisLabelColor: COL.muted, valAxisLabelFontFace: FONT,
-  showValAxisTitle: true, valAxisTitle: "kWh", valAxisTitleFontSize: 8, valAxisTitleColor: COL.muted, valAxisTitleFontFace: FONT,
-  valGridLine: { color: COL.grid, size: 0.5 }, catGridLine: { style: "none" }, valAxisLineShow: false, catAxisLineShow: true, catAxisLineColor: COL.line,
-}));
-const px = (d) => cf.x + PL.x * cf.w + (d / 6) * PL.w * cf.w;
-const pyTop = cf.y + PL.y * cf.h, pyBot = cf.y + (PL.y + PL.h) * cf.h;
-["15/03", "16/03", "17/03 (hôm nay)", "18/03", "19/03", "20/03"].forEach((l, i) =>
-  txt(l, { x: px(i), y: pyBot + 0.03, w: px(1) - px(0), h: 0.15, fontSize: 8, color: i === 2 ? COL.ink : COL.muted, bold: i === 2, align: "center", objectName: `Day label ${i}` }));
-const xNow = px(nowIdx / 24);
-s.addShape(pres.shapes.LINE, { x: xNow, y: pyTop, w: 0, h: pyBot - pyTop, line: { color: COL.ink, width: 1, dashType: "sysDot" }, objectName: "Now line" });
-txt("Bây giờ", { x: xNow + 0.04, y: pyTop, w: 0.5, h: 0.14, fontSize: 7.5, bold: true, color: COL.ink, objectName: "Now label" });
-badge(4, MX - 0.08, CY - 0.08, "chart");
-
-// bottom-left: tomorrow by hour (ref 5)
-const BY = CY + CHh + 0.1, BH = FY + FH - 0.1 - BY, BW1 = 3.05, BW2 = MW - BW1 - 0.1;
-card(MX, BY, BW1, BH, "Tomorrow card");
-txt([{ text: "Ngày mai 18/03 theo giờ  ", options: { bold: true } }, { text: "mây 90–100% từ 9h", options: { color: COL.coral, fontSize: 8 } }], { x: MX + 0.12, y: BY + 0.07, w: BW1 - 0.2, h: 0.18, fontSize: 10, objectName: "Tomorrow title" });
-const hrs = Array.from({ length: 24 }, (_, h) => String(h));
-s.addChart(pres.charts.BAR, [{ name: "kWh", labels: hrs.slice(5, 20), values: tomorrow.slice(5, 20) }], {
-  x: MX + 0.05, y: BY + 0.27, w: BW1 - 0.1, h: BH - 0.5, objectName: "Tomorrow chart", barDir: "col", layout: { x: 0.1, y: 0.05, w: 0.88, h: 0.7 }, chartColors: [COL.sea], barGapWidthPct: 35,
-  showLegend: false, showTitle: false, valAxisMinVal: 0, valAxisMaxVal: 4, valAxisMajorUnit: 2, valAxisLabelFormatCode: "0",
-  catAxisLabelFontSize: 7.5, valAxisLabelFontSize: 7.5, catAxisLabelColor: COL.muted, valAxisLabelColor: COL.muted, catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
-  valGridLine: { color: COL.grid, size: 0.5 }, catGridLine: { style: "none" }, valAxisLineShow: false, catAxisLineColor: COL.line,
-});
-// cloud strip under the bars, one cell per hour 5..19
-const cx0 = MX + 0.05 + 0.1 * (BW1 - 0.1), cw = (BW1 - 0.1) * 0.88 / 15;
-cloudTomorrow.slice(5, 20).forEach((c, i) => rect(cx0 + i * cw + 0.005, BY + BH - 0.2, cw - 0.01, 0.1, COL.slate, `Cloud cell ${i}`, { fill: { color: COL.slate, transparency: 100 - c * 0.8 } }));
-txt("mây", { x: MX + 0.08, y: BY + BH - 0.22, w: 0.3, h: 0.14, fontSize: 7, color: COL.muted, objectName: "Cloud label" });
-badge(5, MX - 0.08, BY - 0.08, "tomorrow");
-
-// bottom-right: alerts & tips (ref 6 -> numbered 7 to keep 6 for system card)
-const AX = MX + BW1 + 0.1;
-card(AX, BY, BW2, BH, "Alerts card");
-txt("Cảnh báo & gợi ý", { x: AX + 0.12, y: BY + 0.07, w: BW2 - 0.2, h: 0.18, fontSize: 10, bold: true, objectName: "Alerts title" });
-const alerts = [
-  [COL.coralBg, COL.coral, "Ngày mai nhiều mây", `Dự báo ${vn(fcTomorrow, 0)} kWh, thấp hơn TB 7 ngày ${vn((1 - fcTomorrow / avg7) * 100, 0)}%`],
-  [COL.sunBg, COL.sun, "Thấp hơn dự báo 15%", "10–12h hôm qua · kiểm tra bụi, bóng che"],
-  [COL.seaBg, COL.sea, "Gợi ý dùng điện", "Chạy máy giặt, bơm nước 11–13h hôm nay"],
-];
-const ah = (BH - 0.33) / 3;
-alerts.forEach(([bg, c, h, d], i) => {
-  const y = BY + 0.29 + i * ah;
-  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: AX + 0.08, y, w: BW2 - 0.16, h: ah - 0.05, rectRadius: 0.04, fill: { color: bg }, line: { type: "none" }, objectName: `Alert ${i} bg` });
-  s.addShape(pres.shapes.OVAL, { x: AX + 0.15, y: y + (ah - 0.05) / 2 - 0.045, w: 0.09, h: 0.09, fill: { color: c }, line: { type: "none" }, objectName: `Alert ${i} dot` });
-  txt([{ text: h, options: { bold: true, breakLine: true } }, { text: d, options: { color: COL.slate, fontSize: 7.5 } }], { x: AX + 0.3, y: y + 0.03, w: BW2 - 0.42, h: ah - 0.1, fontSize: 8.5, valign: "middle", objectName: `Alert ${i} text` });
-});
-badge(7, AX - 0.08, BY - 0.08, "alerts");
-
-// ---------------- reference column
-const RX = 7.45, RW = 2.3;
-txt("Tham khảo", { x: RX, y: 0.75, w: RW, h: 0.22, fontSize: 12, bold: true, objectName: "Refs title" });
-const refs = [
-  [1, "Thanh điều hướng trái", "Solentra – Solar SaaS Dashboard (Figma)", "https://www.figma.com/community/file/1633736467361773655/solar-energy-saas-dashboard-solentra", "dashboard 1 trang, sidebar"],
-  [2, "Trạng thái + thời tiết", "Enphase app – tab Status", "https://support.enphase.com/s/article/how-to-monitor-energy-data-in-the-enphase-app", "thời tiết, trạng thái ở đầu trang"],
-  [3, "Thẻ KPI", "Huawei FusionSolar – Plant overview", "https://support.huawei.com/enterprise/en/doc/EDOC1100096889/dcc45511/plant-overview", "yield hôm nay/tháng, KPI ở trên"],
-  [4, "Biểu đồ quá khứ / dự báo", "Solcast – rooftop site", "https://www.solarquotes.com.au/blog/solcast-update-2023/", "vạch 'bây giờ', dải P10–P90"],
-  [5, "Dự báo theo giờ", "pv-forecast-card (Home Assistant)", "https://github.com/dropqube/pv-forecast-card", "thẻ dự báo kiểu thẻ thời tiết"],
-  [6, "Khai báo hệ thống", "Solcast – thêm rooftop site", "https://www.solarquotes.com.au/blog/solcast-update-2023/", "vị trí, kWp, góc nghiêng, hướng"],
-  [7, "Cảnh báo màu", "mySolarEdge + FusionSolar alarms", "https://www.solaredge.com/us/products/software-tools/mysolaredge", "cảnh báo mã màu theo mức độ"],
-];
-const rh = 0.64;
-refs.forEach(([n, block, src, url, idea], i) => {
-  const y = 1.02 + i * rh;
-  badge(n, RX, y + 0.01, `ref list`);
-  txt([
-    { text: block, options: { bold: true, breakLine: true } },
-    { text: src, options: { color: COL.sea, hyperlink: { url, tooltip: url }, breakLine: true } },
-    { text: idea, options: { color: COL.muted } },
-  ], { x: RX + 0.28, y, w: RW - 0.28, h: rh - 0.06, fontSize: 8.5, objectName: `Ref ${n} text` });
-});
+// =============================================================== comparison with similar apps
+{
+  const x = 7.45, w = 2.25;
+  T("So với app tương tự", { x, y: 0.5, w, h: 0.22, fontSize: 11, bold: true, valign: "bottom" });
+  T("theo mô tả công khai của từng app", { x, y: 0.73, w, h: 0.14, fontSize: 7, color: C.sub });
+  const head = { bold: true, color: C.sub, fontSize: 7 };
+  const rows = [
+    [{ text: "App", options: head }, { text: "Số đo thật", options: head }, { text: "Dự báo", options: head }],
+    ["FusionSolar, Solarman", "Có", "Không thấy"],
+    ["Enphase", "Có", "5 ngày, chỉ hệ Enphase"],
+    ["Solcast, PV Solar Forecast", "Ước tính", "7–15 ngày"],
+    ["Home Assistant + Forecast.Solar", "Có", "7 ngày, tự cài"],
+    [{ text: "MVP này", options: { bold: true } }, { text: "Có, nhiều hãng", options: { bold: true } }, { text: "Theo giờ, 7 ngày", options: { bold: true } }],
+  ].map((r) => r.map((c) => (typeof c === "string" ? { text: c } : c)));
+  s.addTable(rows, {
+    x, y: 0.95, w, colW: [0.95, 0.55, 0.75], fontFace: FONT, fontSize: 7, color: C.text, valign: "middle",
+    border: [{ type: "none" }, { type: "none" }, { pt: 0.5, color: C.hair }, { type: "none" }], margin: [0.03, 0.03, 0.03, 0], rowH: 0.36, objectName: "Comparison table",
+  });
+  T("Điểm khác", { x, y: 3.25, w, h: 0.16, fontSize: 8.5, bold: true });
+  T([
+    { text: "Số đo inverter và dự báo trên cùng một biểu đồ, không cần tự cài như Home Assistant.", options: { bullet: { indent: 8 }, breakLine: true } },
+    { text: "Không gắn với một hãng inverter.", options: { bullet: { indent: 8 }, breakLine: true } },
+    { text: "Báo trước ngày nhiều mây; báo khi sản lượng thấp hơn dự báo.", options: { bullet: { indent: 8 } } },
+  ], { x, y: 3.43, w, h: 1.0, fontSize: 7.5, color: C.text, valign: "top", paraSpaceAfter: 3 });
+  T("Số liệu trên màn hình: dữ liệu mock.", { x, y: 4.62, w, h: 0.14, fontSize: 6.5, color: C.sub });
+}
 
 s.addNotes([
-  "MVP: dashboard web 1 trang cho chủ hệ điện mặt trời áp mái. Các khối và nguồn tham khảo:",
-  ...refs.map(([n, b, src, url, idea]) => `${n}. ${b} – ${src} (${idea}): ${url}`),
-  "Khác: Soola – Solar Monitoring App UI kit (Figma) https://www.figma.com/community/file/1351099676254002625 cho phiên bản mobile sau MVP.",
-  "Số liệu trên wireframe lấy từ bộ dữ liệu mock; dự báo P50 là giá trị mock tương lai, P10/P90 = 0,72× / 1,18× P50.",
+  "Nguồn tham khảo (mô tả công khai):",
+  "Home Assistant Energy + Forecast.Solar – đường dự báo trên biểu đồ sản lượng: https://www.home-assistant.io/integrations/forecast_solar/",
+  "FusionSolar – Plant overview (yield hôm nay, KPI trên cùng, cảnh báo): https://support.huawei.com/enterprise/en/doc/EDOC1100096889/dcc45511/plant-overview",
+  "SOLARMAN Smart – real-time overview, sản lượng ngày: https://www.solarmanpv.com/solarman-smart-explained-intelligent-solar-monitoring-made-simple.html",
+  "Enphase app – five-day production forecast: https://enphase.com/blog/homeowners/enphase-app-solar-monitoring",
+  "PV Solar Forecast (iOS) – dự báo theo giờ 360 giờ, theo ngày 15 ngày: https://apps.apple.com/us/app/pv-solar-forecast/id1496274910",
+  "Solcast – thêm rooftop site (vị trí, kWp, azimuth, tilt), estimated actuals: https://www.solarquotes.com.au/blog/solcast-update-2023/",
+  "Nhận xét FusionSolar không dùng dự báo thời tiết (đánh giá người dùng): https://www.heavengreenenergy.com/blog/huawei-fusionsolar-design-review",
 ].join("\n"));
 
-// pptxgenjs writes nulls as empty <c:v></c:v> in number caches, which PowerPoint rejects: drop them (gap)
+// pptxgenjs writes nulls as empty <c:v></c:v> in number caches, which PowerPoint rejects: drop them;
+// and dash the "Dự báo" line on the home chart.
 async function fixCharts(file) {
   const zip = await JSZip.loadAsync(fs.readFileSync(file));
   for (const f of Object.keys(zip.files).filter((f) => /^ppt\/charts\/chart\d+\.xml$/.test(f))) {
     let xml = await zip.file(f).async("string");
     xml = xml.replace(/<c:numCache>[\s\S]*?<\/c:numCache>/g, (nc) => nc.replace(/<c:pt idx="\d+"><c:v><\/c:v><\/c:pt>/g, ""));
-    // P50 forecast dashed (4th y series)
-    let k = 0;
-    xml = xml.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, (ser) => (k++ === 3 ? ser.replace(/<a:prstDash val="solid"\/>/, '<a:prstDash val="dash"/>') : ser));
+    xml = xml.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, (ser) => (/<c:v>Dự báo<\/c:v>/.test(ser) ? ser.replace(/<a:prstDash val="solid"\/>/, '<a:prstDash val="dash"/>') : ser));
     zip.file(f, xml);
   }
   fs.writeFileSync(file, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
